@@ -1,0 +1,28 @@
+# Secrets
+.env
+.env.*
+!.env.example
+.dev.vars
+
+# Python
+v/
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# Node / build
+node_modules/
+dist/
+build/
+.output/
+
+# Logs & OS
+*.log
+.DS_Store
+Thumbs.db
+
+# Local deploy settings
+deploy.settings.json
+.vercel/
+.wrangler/

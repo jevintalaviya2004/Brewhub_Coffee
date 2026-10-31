@@ -1,0 +1,6 @@
+v/
+.venv/
+__pycache__/
+.env
+*.log
+supabase_schema.sql
