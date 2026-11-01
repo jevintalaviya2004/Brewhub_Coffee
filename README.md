@@ -13,6 +13,7 @@ BrewHub is a coffee ordering app for offices. Employees pick their company on a 
 - Add, edit and delete companies, employees and products
 - View all orders, filter them by date, and change or remove items
 - Export an Excel report with one sheet per company, showing each employee's drinks and total
+- E-mail every employee their statement: the amount due plus a PDF of all their orders with date and time (SMTP, e.g. Gmail)
 - Delete orders older than 30 days
 
 ## Tech stack
@@ -82,6 +83,13 @@ SUPABASE_URL=https://your-project-id.supabase.co
 SUPABASE_SERVICE_KEY=your-supabase-service-role-key
 JWT_SECRET=any-long-random-string
 JWT_ALGORITHM=HS256
+
+# Optional: e-mail statements (Gmail example)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your.address@gmail.com
+SMTP_PASSWORD=your-16-character-app-password
+SMTP_FROM_NAME=BrewHub
 ```
 
 | Variable | What it is |
@@ -90,6 +98,10 @@ JWT_ALGORITHM=HS256
 | `SUPABASE_SERVICE_KEY` | The `service_role` key from the same page. Keep it on the backend only |
 | `JWT_SECRET` | A secret used to sign admin login tokens. Use a long random string |
 | `JWT_ALGORITHM` | The signing algorithm. `HS256` works |
+| `ALLOWED_ORIGINS` | Production only: the frontend URL(s) that may call the API, comma-separated. Empty = all (local development) |
+| `SMTP_HOST` / `SMTP_PORT` | Mail server. Gmail: `smtp.gmail.com` and `587` (STARTTLS). Port `465` uses SSL |
+| `SMTP_USER` / `SMTP_PASSWORD` | Login of the mail account. For Gmail use an **App Password**, not your normal password |
+| `SMTP_FROM` / `SMTP_FROM_NAME` | Optional sender address and name. Default: `SMTP_USER` and `BrewHub` |
 
 **`frontend/.env`**
 
@@ -100,6 +112,16 @@ VITE_API_BASE_URL=http://localhost:8000
 | Variable | What it is |
 |---|---|
 | `VITE_API_BASE_URL` | The address of the backend. `start.bat` fills this in automatically with your computer's IP address |
+
+### E-mail statements (SMTP)
+
+In the admin page, **Export** tab, the card **E-mail statements** sends each employee who ordered in the chosen period one e-mail with the amount due and a PDF of all orders (date, time, order number, drink, quantity, price).
+
+- Enter a **test address** first: then at most 3 statements go only to that address, so you can check them.
+- Leave the test address empty to send to all employees. Employees without a valid e-mail address are listed as skipped.
+- Endpoint: `POST /api/billing/send-statements` (admin token required).
+
+**Gmail setup:** turn on 2-Step Verification for the Google account, then create an App Password at https://myaccount.google.com/apppasswords and use it as `SMTP_PASSWORD`. Gmail limits how many e-mails one account can send per day.
 
 ### 3. Create an admin account
 

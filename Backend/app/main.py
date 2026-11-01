@@ -9,6 +9,7 @@ from app.routes.product_routes import router as product_router
 from app.routes.order_routes import router as order_router
 from app.routes.admin_routes import router as admin_router
 from app.routes.export_routes import router as export_router
+from app.routes.billing_routes import router as billing_router
 
 app = FastAPI()
 
@@ -58,4 +59,10 @@ app.include_router(
     export_router,
     prefix="/api/export",
     tags=["Export"]
+)
+
+app.include_router(
+    billing_router,
+    prefix="/api/billing",
+    tags=["Billing"]
 )

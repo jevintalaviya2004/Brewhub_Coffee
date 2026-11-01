@@ -40,6 +40,16 @@ export type OrderItem = {
   price: number;
 };
 
+export type StatementResult = {
+  period: string;
+  test_mode: boolean;
+  employees: number;
+  total_amount: number;
+  sent: Array<{ name: string; email: string; amount: number }>;
+  skipped: Array<{ name: string; reason: string }>;
+  failed: Array<{ name: string; email: string; error: string }>;
+};
+
 export type Order = {
   order_id: number;
   reference_number: string;
@@ -208,6 +218,19 @@ export const api = {
   },
 
   // ── Export ───────────────────────────────────────────────────────────
+  // ── Billing e-mails ──────────────────────────────────────────────────
+  sendStatements(body: {
+    from_date?: string;
+    to_date?: string;
+    company_id?: number;
+    test_recipient?: string;
+  }) {
+    return request<StatementResult>("/api/billing/send-statements", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+
   async exportReport(fromDate?: string, toDate?: string) {
     const token = localStorage.getItem("adminToken");
     const params = new URLSearchParams();

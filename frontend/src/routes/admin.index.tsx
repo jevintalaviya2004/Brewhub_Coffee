@@ -2,11 +2,11 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
-  Coffee, LogOut, Plus, Trash2, Download, ArrowLeft, RefreshCw, Pencil, X,
+  Coffee, LogOut, Plus, Trash2, Download, ArrowLeft, RefreshCw, Pencil, X, Mail,
 } from "lucide-react";
 import {
   api,
-  type Company, type Product, type User, type Order, type OrderItem,
+  type Company, type Product, type User, type Order, type OrderItem, type StatementResult,
 } from "@/lib/api";
 import { Button }   from "@/components/ui/button";
 import { Input }    from "@/components/ui/input";
@@ -122,7 +122,7 @@ function AdminDashboard() {
           </TabsContent>
 
           <TabsContent value="export" className="mt-6">
-            <ExportTab />
+            <ExportTab companies={companies} />
           </TabsContent>
         </Tabs>
       </main>
@@ -752,7 +752,16 @@ function OrdersTab() {
 // EXPORT TAB — date range pickers
 // ─────────────────────────────────────────────────────────────────────────────
 
-function ExportTab() {
+function ExportTab({ companies }: { companies: Company[] }) {
+  return (
+    <div className="grid gap-6 lg:grid-cols-2 items-start">
+      <ExcelExportCard />
+      <EmailStatementsCard companies={companies} />
+    </div>
+  );
+}
+
+function ExcelExportCard() {
   const { t } = useI18n();
   const [loading,  setLoading]  = useState(false);
   const [file,     setFile]     = useState<string | null>(null);
@@ -771,7 +780,7 @@ function ExportTab() {
   }
 
   return (
-    <div className="max-w-xl rounded-xl border border-border bg-card p-6 space-y-4">
+    <div className="rounded-xl border border-border bg-card p-6 space-y-4">
       <div>
         <h3 className="font-semibold text-primary text-lg flex items-center gap-2">
           <Download className="h-5 w-5" /> {t("admin.export.title")}
@@ -799,6 +808,147 @@ function ExportTab() {
         <p className="text-sm text-mocha">
           {t("admin.export.file")} <span className="font-mono">{file}</span>
         </p>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// E-MAIL STATEMENTS — one e-mail with a PDF per employee
+// ─────────────────────────────────────────────────────────────────────────────
+
+function firstOfMonth() {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth(), 1).toLocaleDateString("sv-SE");
+}
+
+function today() {
+  return new Date().toLocaleDateString("sv-SE"); // YYYY-MM-DD in local time
+}
+
+function EmailStatementsCard({ companies }: { companies: Company[] }) {
+  const { t } = useI18n();
+  const [fromDate, setFromDate] = useState(firstOfMonth);
+  const [toDate, setToDate] = useState(today);
+  const [companyId, setCompanyId] = useState("");
+  const [testRecipient, setTestRecipient] = useState("");
+  const [sending, setSending] = useState(false);
+  const [result, setResult] = useState<StatementResult | null>(null);
+
+  const euro = (value: number) =>
+    value.toLocaleString("de-DE", { style: "currency", currency: "EUR" });
+
+  async function send() {
+    const isTest = testRecipient.trim() !== "";
+    const question = isTest
+      ? t("admin.mail.confirmTest", { email: testRecipient.trim() })
+      : t("admin.mail.confirmReal");
+    if (!confirm(question)) return;
+
+    setSending(true);
+    setResult(null);
+    try {
+      const res = await api.sendStatements({
+        from_date: fromDate || undefined,
+        to_date: toDate || undefined,
+        company_id: companyId ? Number(companyId) : undefined,
+        test_recipient: isTest ? testRecipient.trim() : undefined,
+      });
+      setResult(res);
+      if (res.failed.length > 0) toast.error(t("admin.mail.someFailed", { count: res.failed.length }));
+      else toast.success(t("admin.mail.done", { count: res.sent.length }));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t("admin.mail.failed"));
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-border bg-card p-6 space-y-4">
+      <div>
+        <h3 className="font-semibold text-primary text-lg flex items-center gap-2">
+          <Mail className="h-5 w-5" /> {t("admin.mail.title")}
+        </h3>
+        <p className="text-sm text-muted-foreground mt-1">{t("admin.mail.description")}</p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <Label>{t("common.fromDate")}</Label>
+          <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+        </div>
+        <div>
+          <Label>{t("common.toDate")}</Label>
+          <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+        </div>
+      </div>
+
+      <div>
+        <Label>{t("common.company")}</Label>
+        <select
+          className="h-10 w-full rounded-md border border-input bg-background px-3"
+          value={companyId}
+          onChange={(e) => setCompanyId(e.target.value)}
+        >
+          <option value="">{t("admin.mail.allCompanies")}</option>
+          {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+      </div>
+
+      <div>
+        <Label>{t("admin.mail.testLabel")}</Label>
+        <Input
+          type="email"
+          value={testRecipient}
+          onChange={(e) => setTestRecipient(e.target.value)}
+          placeholder={t("admin.mail.testPlaceholder")}
+        />
+        <p className="text-xs text-muted-foreground mt-1">{t("admin.mail.testHint")}</p>
+      </div>
+
+      <Button onClick={send} disabled={sending} className="w-full">
+        <Mail className="h-4 w-4 mr-1" />
+        {sending
+          ? t("admin.mail.sending")
+          : testRecipient.trim()
+            ? t("admin.mail.sendTest")
+            : t("admin.mail.sendAll")}
+      </Button>
+
+      {result && (
+        <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-sm space-y-2">
+          <div className="font-medium text-primary">
+            {result.test_mode && <span className="mr-1 rounded bg-accent/20 px-1.5 py-0.5 text-xs">TEST</span>}
+            {t("admin.mail.summary", {
+              sent: result.sent.length,
+              employees: result.employees,
+              total: euro(result.total_amount),
+            })}
+          </div>
+          {result.sent.length > 0 && (
+            <ul className="text-xs text-muted-foreground space-y-0.5">
+              {result.sent.map((s, i) => (
+                <li key={`s${i}`}>✓ {s.name} → {s.email} ({euro(s.amount)})</li>
+              ))}
+            </ul>
+          )}
+          {result.skipped.length > 0 && (
+            <ul className="text-xs text-mocha space-y-0.5">
+              {result.skipped.map((s, i) => (
+                <li key={`k${i}`}>– {s.name}: {s.reason}</li>
+              ))}
+            </ul>
+          )}
+          {result.failed.length > 0 && (
+            <ul className="text-xs text-destructive space-y-0.5">
+              {result.failed.map((f, i) => (
+                <li key={`f${i}`}>✗ {f.name} ({f.email}): {f.error}</li>
+              ))}
+            </ul>
+          )}
+          {result.employees === 0 && <p className="text-xs text-muted-foreground">{t("admin.mail.nothing")}</p>}
+        </div>
       )}
     </div>
   );
