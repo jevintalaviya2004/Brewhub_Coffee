@@ -14,7 +14,8 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { useI18n } from "@/lib/i18n";
+import { errorText, useI18n } from "@/lib/i18n";
+import { MAX_QUANTITY } from "@/lib/validation";
 
 export const Route = createFileRoute("/order/$employeeId")({
   component: OrderPage,
@@ -62,7 +63,7 @@ function OrderPage() {
   });
 
   function set(id: string, n: number) {
-    setQty((q) => ({ ...q, [id]: Math.max(0, Math.min(999, Math.floor(n) || 0)) }));
+    setQty((q) => ({ ...q, [id]: Math.max(0, Math.min(MAX_QUANTITY, Math.floor(n) || 0)) }));
     setPopKey((k) => ({ ...k, [id]: (k[id] ?? 0) + 1 }));
   }
 
@@ -89,7 +90,7 @@ function OrderPage() {
       setConfirmOpen(false);
       setSuccessOpen(true);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t("order.failed"));
+      toast.error(errorText(t, error, "order.failed"));
     } finally {
       setSubmitting(false);
     }
@@ -158,7 +159,7 @@ function OrderPage() {
                     <input
                       type="number"
                       min={0}
-                      max={999}
+                      max={MAX_QUANTITY}
                       value={n === 0 ? "" : n}
                       placeholder="0"
                       onChange={(e) => set(p.id, parseInt(e.target.value) || 0)}
@@ -168,12 +169,18 @@ function OrderPage() {
                     <Button
                       size="icon"
                       onClick={() => set(p.id, n + 1)}
+                      disabled={n >= MAX_QUANTITY}
                       aria-label={t("order.increase")}
                       className="h-11 w-11 rounded-full active:scale-90 transition-transform"
                     >
                       <Plus className="h-5 w-5" />
                     </Button>
                   </div>
+                  {n >= MAX_QUANTITY && (
+                    <div className="mt-1.5 text-center text-[11px] font-medium text-destructive">
+                      {t("order.maxReached", { max: MAX_QUANTITY })}
+                    </div>
+                  )}
                   {n > 0 && (
                     <div className="mt-1.5 text-center text-[11px] text-mocha">
                       = <span className="font-semibold text-primary">€{(n * Number(p.price)).toFixed(2)}</span>

@@ -16,7 +16,29 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { LanguageSwitch, useI18n } from "@/lib/i18n";
+import { LanguageSwitch, errorText, useI18n, validationText } from "@/lib/i18n";
+import { FieldError, errorInputClass } from "@/components/FieldError";
+import { EmployeeFormFields } from "@/components/EmployeeFormFields";
+import {
+  allowedEmailDomains,
+  backendFieldError,
+  checkDateRange,
+  checkEmailFormat,
+  checkQuantity,
+  hasErrors,
+  parsePrice,
+  validateCompany,
+  validateEmployee,
+  validateProduct,
+  type CompanyField,
+  type CompanyForm,
+  type EmployeeField,
+  type EmployeeForm,
+  type ErrorCode,
+  type FieldErrors,
+  type ProductField,
+  type ProductForm,
+} from "@/lib/validation";
 
 export const Route = createFileRoute("/admin/")({
   component: AdminPage,
@@ -136,31 +158,38 @@ function AdminDashboard() {
 
 function CompaniesTab({ companies, refetch }: { companies: Company[]; refetch: () => Promise<unknown> }) {
   const { t } = useI18n();
-  const [name, setName]     = useState("");
-  const [logoUrl, setLogoUrl] = useState("");
+  const empty: CompanyForm = { name: "", logo_url: "", email_domains: "" };
+  const [form, setForm] = useState<CompanyForm>(empty);
+  const [errors, setErrors] = useState<FieldErrors<CompanyField>>({});
+  const [tried, setTried] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  function update(field: CompanyField, value: string) {
+    const next = { ...form, [field]: value };
+    setForm(next);
+    if (tried) setErrors(validateCompany(next));
+  }
+
   async function addCompany() {
-    if (!name.trim()) return toast.error(t("admin.company.nameRequired"));
+    setTried(true);
+    const found = validateCompany(form);
+    setErrors(found);
+    if (hasErrors(found)) return toast.error(t("val.fixErrors"));
     setSaving(true);
     try {
-      await api.createCompany({ name: name.trim(), logo_url: logoUrl.trim() });
-      setName(""); setLogoUrl("");
+      await api.createCompany({
+        name: form.name.trim(),
+        logo_url: form.logo_url.trim(),
+        email_domains: form.email_domains.trim(),
+      });
+      setForm(empty); setErrors({}); setTried(false);
       await refetch();
       toast.success(t("admin.company.added"));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t("admin.company.addFailed"));
+      const fieldError = backendFieldError(error, COMPANY_FIELDS);
+      if (fieldError) setErrors(fieldError);
+      toast.error(errorText(t, error, "admin.company.addFailed"));
     } finally { setSaving(false); }
-  }
-
-  async function saveCompany(company: Company, patch: { name: string; logo_url: string }) {
-    try {
-      await api.updateCompany(company.id, patch);
-      await refetch();
-      toast.success(t("admin.company.updated"));
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : t("admin.company.updateFailed"));
-    }
   }
 
   async function deleteCompany(id: number) {
@@ -170,25 +199,37 @@ function CompaniesTab({ companies, refetch }: { companies: Company[]; refetch: (
       await refetch();
       toast.success(t("admin.company.deleted"));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t("admin.company.deleteFailed"));
+      toast.error(errorText(t, error, "admin.company.deleteFailed"));
     }
   }
+
+  const addField = (field: CompanyField, label: string, placeholder?: string) => (
+    <div>
+      <Label>{label}</Label>
+      <Input
+        value={form[field]}
+        placeholder={placeholder}
+        onChange={(e) => update(field, e.target.value)}
+        aria-invalid={!!errors[field]}
+        className={errorInputClass(!!errors[field])}
+      />
+      <FieldError message={validationText(t, errors[field])} />
+    </div>
+  );
 
   return (
     <div className="space-y-4">
       {/* Add form */}
-      <div className="rounded-xl border border-border bg-card p-4 grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-3 items-end">
-        <div>
-          <Label>{t("admin.company.name")}</Label>
-          <Input value={name} onChange={(e) => setName(e.target.value)} />
+      <div className="rounded-xl border border-border bg-card p-4 space-y-2">
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_1fr_auto] gap-3 items-start">
+          {addField("name", t("admin.company.name"))}
+          {addField("logo_url", t("admin.company.logo"), "/company-logos/thd.jpeg")}
+          {addField("email_domains", t("admin.company.domains"), t("admin.company.domainsPlaceholder"))}
+          <Button onClick={addCompany} disabled={saving} className="md:mt-6">
+            <Plus className="h-4 w-4 mr-1" /> {t("common.add")}
+          </Button>
         </div>
-        <div>
-          <Label>{t("admin.company.logo")}</Label>
-          <Input value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} />
-        </div>
-        <Button onClick={addCompany} disabled={saving}>
-          <Plus className="h-4 w-4 mr-1" /> {t("common.add")}
-        </Button>
+        <p className="text-xs text-muted-foreground">{t("admin.company.domainsHint")}</p>
       </div>
 
       {/* Table */}
@@ -199,43 +240,81 @@ function CompaniesTab({ companies, refetch }: { companies: Company[]; refetch: (
               <th className="p-3">{t("common.id")}</th>
               <th className="p-3">{t("common.name")}</th>
               <th className="p-3">{t("admin.company.logo")}</th>
+              <th className="p-3">{t("admin.company.domains")}</th>
               <th className="p-3 text-right">{t("common.actions")}</th>
             </tr>
           </thead>
           <tbody>
             {companies.map((c) => (
-              <tr key={c.id} className="border-t border-border/60">
-                <td className="p-3 font-mono text-xs">{c.id}</td>
-                <td className="p-3">
-                  <Input
-                    defaultValue={c.name}
-                    onBlur={(e) => {
-                      if (e.target.value !== c.name)
-                        saveCompany(c, { name: e.target.value, logo_url: c.logo_url ?? "" });
-                    }}
-                  />
-                </td>
-                <td className="p-3">
-                  <Input
-                    defaultValue={c.logo_url ?? ""}
-                    onBlur={(e) => {
-                      if (e.target.value !== (c.logo_url ?? ""))
-                        saveCompany(c, { name: c.name, logo_url: e.target.value });
-                    }}
-                  />
-                </td>
-                <td className="p-3 text-right">
-                  <Button size="sm" variant="destructive" onClick={() => deleteCompany(c.id)}>
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </td>
-              </tr>
+              <CompanyRow key={c.id} company={c} refetch={refetch} onDelete={() => deleteCompany(c.id)} />
             ))}
-            {companies.length === 0 && <EmptyRow colSpan={4} />}
+            {companies.length === 0 && <EmptyRow colSpan={5} />}
           </tbody>
         </table>
       </div>
     </div>
+  );
+}
+
+const COMPANY_FIELDS = ["name", "logo_url", "email_domains"] as const;
+
+/** One editable table row. Saves a field when the user leaves it, if the value is valid. */
+function CompanyRow({ company, refetch, onDelete }: {
+  company: Company;
+  refetch: () => Promise<unknown>;
+  onDelete: () => void;
+}) {
+  const { t } = useI18n();
+  const saved: CompanyForm = {
+    name: company.name,
+    logo_url: company.logo_url ?? "",
+    email_domains: company.email_domains ?? "",
+  };
+  const [form, setForm] = useState<CompanyForm>(saved);
+  const [errors, setErrors] = useState<FieldErrors<CompanyField>>({});
+
+  async function save(field: CompanyField) {
+    if (form[field] === saved[field]) return setErrors((e) => ({ ...e, [field]: undefined }));
+    const found = validateCompany(form);
+    setErrors(found);
+    if (hasErrors(found)) return;
+    try {
+      await api.updateCompany(company.id, form);
+      await refetch();
+      toast.success(t("admin.company.updated"));
+    } catch (error) {
+      const fieldError = backendFieldError(error, COMPANY_FIELDS);
+      if (fieldError) setErrors(fieldError);
+      toast.error(errorText(t, error, "admin.company.updateFailed"));
+    }
+  }
+
+  const cell = (field: CompanyField, placeholder?: string) => (
+    <td className="p-3 align-top">
+      <Input
+        value={form[field]}
+        placeholder={placeholder}
+        onChange={(e) => setForm({ ...form, [field]: e.target.value })}
+        onBlur={() => save(field)}
+        aria-invalid={!!errors[field]}
+        className={errorInputClass(!!errors[field])}
+      />
+      <FieldError message={validationText(t, errors[field])} />
+    </td>
+  );
+
+  return (
+    <tr className="border-t border-border/60">
+      <td className="p-3 font-mono text-xs align-top pt-5">{company.id}</td>
+      {cell("name")}
+      {cell("logo_url")}
+      {cell("email_domains", t("admin.company.domainsPlaceholder"))}
+      <td className="p-3 text-right align-top">
+        <Button size="sm" variant="destructive" onClick={onDelete}>
+          <Trash2 className="h-3.5 w-3.5" />
+        </Button>
+      </td>
+    </tr>
   );
 }
 
@@ -253,52 +332,89 @@ function EmployeesTab({
   refetch: () => Promise<unknown>;
 }) {
   const { t } = useI18n();
-  const [form, setForm]   = useState({ first_name: "", last_name: "", email: "", pin: "" });
+  const empty: EmployeeForm = { first_name: "", last_name: "", email: "", pin: "" };
+  const [form, setForm]     = useState<EmployeeForm>(empty);
+  const [errors, setErrors] = useState<FieldErrors<EmployeeField>>({});
+  const [tried, setTried]   = useState(false);
   const [saving, setSaving] = useState(false);
 
   const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [editForm, setEditForm]       = useState({ first_name: "", last_name: "", email: "", pin: "" });
+  const [editForm, setEditForm]       = useState<EmployeeForm>(empty);
+  const [editErrors, setEditErrors]   = useState<FieldErrors<EmployeeField>>({});
+  const [editTried, setEditTried]     = useState(false);
   const [editSaving, setEditSaving]   = useState(false);
 
   const selectedCompany = useMemo(
     () => companies.find((c) => String(c.id) === String(selectedCompanyId)),
     [companies, selectedCompanyId],
   );
+  const domains = selectedCompany?.email_domains;
+
+  function update(field: EmployeeField, value: string) {
+    const next = { ...form, [field]: value };
+    setForm(next);
+    if (tried) setErrors(validateEmployee(next, domains));
+  }
 
   function openEdit(user: User) {
     setEditingUser(user);
-    setEditForm({
-      first_name: user.first_name,
-      last_name:  user.last_name,
-      email:      user.email,
-      pin:        user.pin,
-    });
+    setEditForm({ first_name: user.first_name, last_name: user.last_name, email: user.email, pin: user.pin });
+    setEditErrors({});
+    setEditTried(false);
+  }
+
+  function updateEdit(field: EmployeeField, value: string) {
+    const next = { ...editForm, [field]: value };
+    setEditForm(next);
+    if (editTried) setEditErrors(validateEmployee(next, domains));
   }
 
   async function saveEdit() {
     if (!editingUser) return;
+    setEditTried(true);
+    const found = validateEmployee(editForm, domains);
+    setEditErrors(found);
+    if (hasErrors(found)) return toast.error(t("val.fixErrors"));
     setEditSaving(true);
     try {
-      await api.updateUser(editingUser.id, editForm);
+      await api.updateUser(editingUser.id, {
+        first_name: editForm.first_name.trim(),
+        last_name: editForm.last_name.trim(),
+        email: editForm.email.trim().toLowerCase(),
+        pin: editForm.pin.trim(),
+      });
       setEditingUser(null);
       await refetch();
       toast.success(t("admin.emp.updated"));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t("admin.emp.updateFailed"));
+      const fieldError = backendFieldError(error, EMPLOYEE_FIELDS);
+      if (fieldError) setEditErrors(fieldError);
+      toast.error(errorText(t, error, "admin.emp.updateFailed"));
     } finally { setEditSaving(false); }
   }
 
   async function addEmployee() {
-    if (!selectedCompanyId || !form.first_name || !form.last_name || !form.email || !form.pin)
-      return toast.error(t("admin.emp.required"));
+    if (!selectedCompanyId) return toast.error(t("admin.emp.required"));
+    setTried(true);
+    const found = validateEmployee(form, domains);
+    setErrors(found);
+    if (hasErrors(found)) return toast.error(t("val.fixErrors"));
     setSaving(true);
     try {
-      await api.createUser({ company_id: Number(selectedCompanyId), ...form });
-      setForm({ first_name: "", last_name: "", email: "", pin: "" });
+      await api.createUser({
+        company_id: Number(selectedCompanyId),
+        first_name: form.first_name.trim(),
+        last_name: form.last_name.trim(),
+        email: form.email.trim().toLowerCase(),
+        pin: form.pin.trim(),
+      });
+      setForm(empty); setErrors({}); setTried(false);
       await refetch();
       toast.success(t("admin.emp.added"));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t("admin.emp.addFailed"));
+      const fieldError = backendFieldError(error, EMPLOYEE_FIELDS);
+      if (fieldError) setErrors(fieldError);
+      toast.error(errorText(t, error, "admin.emp.addFailed"));
     } finally { setSaving(false); }
   }
 
@@ -309,39 +425,52 @@ function EmployeesTab({
       await refetch();
       toast.success(t("admin.emp.deleted"));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t("admin.emp.deleteFailed"));
+      toast.error(errorText(t, error, "admin.emp.deleteFailed"));
     }
   }
+
+  const addField = (field: EmployeeField, label: string, extra: Partial<React.ComponentProps<typeof Input>> = {}) => (
+    <div>
+      <Label>{label}</Label>
+      <Input
+        value={form[field]}
+        onChange={(e) => update(field, e.target.value)}
+        aria-invalid={!!errors[field]}
+        className={errorInputClass(!!errors[field])}
+        {...extra}
+      />
+      <FieldError message={validationText(t, errors[field])} />
+    </div>
+  );
 
   return (
     <div className="space-y-4">
       {/* Add form */}
-      <div className="rounded-xl border border-border bg-card p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 items-end">
-        <div>
-          <Label>{t("common.company")}</Label>
-          <select
-            className="h-10 w-full rounded-md border border-input bg-background px-3"
-            value={selectedCompanyId}
-            onChange={(e) => setSelectedCompanyId(e.target.value)}
-          >
-            {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+      <div className="rounded-xl border border-border bg-card p-4 space-y-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 items-start">
+          <div>
+            <Label>{t("common.company")}</Label>
+            <select
+              className="h-10 w-full rounded-md border border-input bg-background px-3"
+              value={selectedCompanyId}
+              onChange={(e) => { setSelectedCompanyId(e.target.value); setErrors({}); setTried(false); }}
+            >
+              {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          {addField("first_name", t("common.firstName"))}
+          {addField("last_name", t("common.lastName"))}
+          {addField("email", t("common.email"), { type: "email" })}
+          {addField("pin", t("common.pin"), { inputMode: "numeric", maxLength: 6, placeholder: "1234" })}
+          <Button onClick={addEmployee} disabled={saving} className="lg:mt-6">
+            <Plus className="h-4 w-4 mr-1" /> {t("common.add")}
+          </Button>
         </div>
-        <div><Label>{t("common.firstName")}</Label>
-          <Input value={form.first_name} onChange={(e) => setForm({ ...form, first_name: e.target.value })} />
-        </div>
-        <div><Label>{t("common.lastName")}</Label>
-          <Input value={form.last_name} onChange={(e) => setForm({ ...form, last_name: e.target.value })} />
-        </div>
-        <div><Label>{t("common.email")}</Label>
-          <Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-        </div>
-        <div><Label>{t("common.pin")}</Label>
-          <Input value={form.pin} onChange={(e) => setForm({ ...form, pin: e.target.value })} />
-        </div>
-        <Button onClick={addEmployee} disabled={saving}>
-          <Plus className="h-4 w-4 mr-1" /> {t("common.add")}
-        </Button>
+        <p className="text-xs text-muted-foreground">
+          {t("val.hint.emailAllowed", { domains: allowedEmailDomains(domains).map((d) => `@${d}`).join(", ") })}
+          {" · "}
+          {t("val.hint.pin")}
+        </p>
       </div>
 
       <div className="text-sm text-muted-foreground">
@@ -388,26 +517,12 @@ function EmployeesTab({
           <DialogHeader>
             <DialogTitle>{t("admin.emp.editTitle")}</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>{t("common.firstName")}</Label>
-                <Input value={editForm.first_name} onChange={(e) => setEditForm({ ...editForm, first_name: e.target.value })} />
-              </div>
-              <div>
-                <Label>{t("common.lastName")}</Label>
-                <Input value={editForm.last_name}  onChange={(e) => setEditForm({ ...editForm, last_name:  e.target.value })} />
-              </div>
-            </div>
-            <div>
-              <Label>{t("common.email")}</Label>
-              <Input type="email" value={editForm.email} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} />
-            </div>
-            <div>
-              <Label>{t("common.pin")}</Label>
-              <Input value={editForm.pin} onChange={(e) => setEditForm({ ...editForm, pin: e.target.value })} />
-            </div>
-          </div>
+          <EmployeeFormFields
+            form={editForm}
+            errors={editErrors}
+            onChange={updateEdit}
+            companyDomains={domains}
+          />
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingUser(null)}>{t("common.cancel")}</Button>
             <Button onClick={saveEdit} disabled={editSaving}>
@@ -420,38 +535,42 @@ function EmployeesTab({
   );
 }
 
+const EMPLOYEE_FIELDS = ["first_name", "last_name", "email", "pin"] as const;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // PRODUCTS TAB — unchanged
 // ─────────────────────────────────────────────────────────────────────────────
 
 function ProductsTab({ products, refetch }: { products: Product[]; refetch: () => Promise<unknown> }) {
   const { t } = useI18n();
-  const [form, setForm]   = useState({ name: "", price: "" });
+  const empty: ProductForm = { name: "", price: "" };
+  const [form, setForm]     = useState<ProductForm>(empty);
+  const [errors, setErrors] = useState<FieldErrors<ProductField>>({});
+  const [tried, setTried]   = useState(false);
   const [saving, setSaving] = useState(false);
 
+  function update(field: ProductField, value: string) {
+    const next = { ...form, [field]: value };
+    setForm(next);
+    if (tried) setErrors(validateProduct(next));
+  }
+
   async function addProduct() {
-    const price = Number(form.price);
-    if (!form.name || Number.isNaN(price)) return toast.error(t("admin.prod.required"));
+    setTried(true);
+    const found = validateProduct(form);
+    setErrors(found);
+    if (hasErrors(found)) return toast.error(t("val.fixErrors"));
     setSaving(true);
     try {
-      await api.createProduct({ name: form.name, price });
-      setForm({ name: "", price: "" });
+      await api.createProduct({ name: form.name.trim(), price: parsePrice(form.price) });
+      setForm(empty); setErrors({}); setTried(false);
       await refetch();
       toast.success(t("admin.prod.added"));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t("admin.prod.addFailed"));
+      const fieldError = backendFieldError(error, PRODUCT_FIELDS);
+      if (fieldError) setErrors(fieldError);
+      toast.error(errorText(t, error, "admin.prod.addFailed"));
     } finally { setSaving(false); }
-  }
-
-  async function updateProduct(product: Product, patch: Partial<Product>) {
-    const updated = { ...product, ...patch };
-    try {
-      await api.updateProduct(product.id, { name: updated.name, price: Number(updated.price) });
-      await refetch();
-      toast.success(t("admin.prod.updated"));
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : t("admin.prod.updateFailed"));
-    }
   }
 
   async function deleteProduct(id: number) {
@@ -461,20 +580,36 @@ function ProductsTab({ products, refetch }: { products: Product[]; refetch: () =
       await refetch();
       toast.success(t("admin.prod.deleted"));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t("admin.prod.deleteFailed"));
+      toast.error(errorText(t, error, "admin.prod.deleteFailed"));
     }
   }
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-border bg-card p-4 grid grid-cols-1 md:grid-cols-[1fr_160px_auto] gap-3 items-end">
-        <div><Label>{t("common.name")}</Label>
-          <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+      <div className="rounded-xl border border-border bg-card p-4 grid grid-cols-1 md:grid-cols-[1fr_180px_auto] gap-3 items-start">
+        <div>
+          <Label>{t("common.name")}</Label>
+          <Input
+            value={form.name}
+            onChange={(e) => update("name", e.target.value)}
+            aria-invalid={!!errors.name}
+            className={errorInputClass(!!errors.name)}
+          />
+          <FieldError message={validationText(t, errors.name)} />
         </div>
-        <div><Label>{t("admin.prod.price")}</Label>
-          <Input type="number" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} />
+        <div>
+          <Label>{t("admin.prod.price")}</Label>
+          <Input
+            inputMode="decimal"
+            placeholder="2.50"
+            value={form.price}
+            onChange={(e) => update("price", e.target.value)}
+            aria-invalid={!!errors.price}
+            className={errorInputClass(!!errors.price)}
+          />
+          <FieldError message={validationText(t, errors.price)} />
         </div>
-        <Button onClick={addProduct} disabled={saving}>
+        <Button onClick={addProduct} disabled={saving} className="md:mt-6">
           <Plus className="h-4 w-4 mr-1" /> {t("common.add")}
         </Button>
       </div>
@@ -491,28 +626,72 @@ function ProductsTab({ products, refetch }: { products: Product[]; refetch: () =
           </thead>
           <tbody>
             {products.map((p) => (
-              <tr key={p.id} className="border-t border-border/60">
-                <td className="p-3 font-mono text-xs">{p.id}</td>
-                <td className="p-3">
-                  <Input defaultValue={p.name}
-                    onBlur={(e) => e.target.value !== p.name && updateProduct(p, { name: e.target.value })} />
-                </td>
-                <td className="p-3">
-                  <Input type="number" step="0.01" defaultValue={p.price}
-                    onBlur={(e) => Number(e.target.value) !== Number(p.price) && updateProduct(p, { price: Number(e.target.value) })} />
-                </td>
-                <td className="p-3 text-right">
-                  <Button size="sm" variant="destructive" onClick={() => deleteProduct(p.id)}>
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </td>
-              </tr>
+              <ProductRow key={p.id} product={p} refetch={refetch} onDelete={() => deleteProduct(p.id)} />
             ))}
             {products.length === 0 && <EmptyRow colSpan={4} />}
           </tbody>
         </table>
       </div>
     </div>
+  );
+}
+
+const PRODUCT_FIELDS = ["name", "price"] as const;
+
+function ProductRow({ product, refetch, onDelete }: {
+  product: Product;
+  refetch: () => Promise<unknown>;
+  onDelete: () => void;
+}) {
+  const { t } = useI18n();
+  const saved: ProductForm = { name: product.name, price: String(product.price) };
+  const [form, setForm] = useState<ProductForm>(saved);
+  const [errors, setErrors] = useState<FieldErrors<ProductField>>({});
+
+  async function save(field: ProductField) {
+    const unchanged = field === "price"
+      ? parsePrice(form.price) === Number(product.price)
+      : form.name === saved.name;
+    if (unchanged) return setErrors((e) => ({ ...e, [field]: undefined }));
+    const found = validateProduct(form);
+    setErrors(found);
+    if (hasErrors(found)) return;
+    try {
+      await api.updateProduct(product.id, { name: form.name.trim(), price: parsePrice(form.price) });
+      await refetch();
+      toast.success(t("admin.prod.updated"));
+    } catch (error) {
+      const fieldError = backendFieldError(error, PRODUCT_FIELDS);
+      if (fieldError) setErrors(fieldError);
+      toast.error(errorText(t, error, "admin.prod.updateFailed"));
+    }
+  }
+
+  const cell = (field: ProductField, extra: Partial<React.ComponentProps<typeof Input>> = {}) => (
+    <td className="p-3 align-top">
+      <Input
+        value={form[field]}
+        onChange={(e) => setForm({ ...form, [field]: e.target.value })}
+        onBlur={() => save(field)}
+        aria-invalid={!!errors[field]}
+        className={errorInputClass(!!errors[field])}
+        {...extra}
+      />
+      <FieldError message={validationText(t, errors[field])} />
+    </td>
+  );
+
+  return (
+    <tr className="border-t border-border/60">
+      <td className="p-3 font-mono text-xs align-top pt-5">{product.id}</td>
+      {cell("name")}
+      {cell("price", { inputMode: "decimal" })}
+      <td className="p-3 text-right align-top">
+        <Button size="sm" variant="destructive" onClick={onDelete}>
+          <Trash2 className="h-3.5 w-3.5" />
+        </Button>
+      </td>
+    </tr>
   );
 }
 
@@ -524,10 +703,12 @@ function OrdersTab() {
   const { t } = useI18n();
   const [fromDate, setFromDate] = useState("");
   const [toDate,   setToDate]   = useState("");
+  const rangeError = checkDateRange(fromDate, toDate);
 
   const ordersQuery = useQuery({
     queryKey: ["admin-orders", fromDate, toDate],
     queryFn:  () => api.getOrders(fromDate || undefined, toDate || undefined),
+    enabled:  !rangeError,
   });
 
   const [localQty, setLocalQty] = useState<Record<number, number>>({});
@@ -546,7 +727,12 @@ function OrdersTab() {
   async function saveItem(item: OrderItem) {
     const newQty = localQty[item.item_id];
     if (newQty === undefined || newQty === item.quantity) return;
-    if (newQty < 0) return;
+    const problem = checkQuantity(newQty);
+    if (problem) {
+      toast.error(validationText(t, problem));
+      setLocalQty((q) => { const n = { ...q }; delete n[item.item_id]; return n; });
+      return;
+    }
     setSaving((s) => ({ ...s, [item.item_id]: true }));
     try {
       await api.updateOrderItem(item.item_id, newQty);
@@ -554,7 +740,7 @@ function OrdersTab() {
       await ordersQuery.refetch();
       toast.success(t("admin.orders.qtySaved"));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t("admin.orders.saveFailed"));
+      toast.error(errorText(t, error, "admin.orders.saveFailed"));
       setLocalQty((q) => { const n = { ...q }; delete n[item.item_id]; return n; });
     } finally {
       setSaving((s) => ({ ...s, [item.item_id]: false }));
@@ -568,7 +754,7 @@ function OrdersTab() {
       await ordersQuery.refetch();
       toast.success(t("admin.orders.itemRemoved"));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t("admin.orders.removeFailed"));
+      toast.error(errorText(t, error, "admin.orders.removeFailed"));
     }
   }
 
@@ -579,7 +765,7 @@ function OrdersTab() {
       await ordersQuery.refetch();
       toast.success(t("admin.orders.deleted"));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t("admin.orders.deleteFailed"));
+      toast.error(errorText(t, error, "admin.orders.deleteFailed"));
     }
   }
 
@@ -590,7 +776,7 @@ function OrdersTab() {
       await ordersQuery.refetch();
       toast.success(t("admin.orders.cleaned", { count: result.deleted_orders }));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t("admin.orders.cleanupFailed"));
+      toast.error(errorText(t, error, "admin.orders.cleanupFailed"));
     }
   }
 
@@ -616,7 +802,14 @@ function OrdersTab() {
         </div>
         <div>
           <Label>{t("common.toDate")}</Label>
-          <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+          <Input
+            type="date"
+            value={toDate}
+            onChange={(e) => setToDate(e.target.value)}
+            aria-invalid={!!rangeError}
+            className={errorInputClass(!!rangeError)}
+          />
+          <FieldError message={validationText(t, rangeError)} />
         </div>
         <Button variant="outline" onClick={() => { setFromDate(""); setToDate(""); }}>
           <X className="h-4 w-4 mr-1" /> {t("common.clear")}
@@ -767,15 +960,17 @@ function ExcelExportCard() {
   const [file,     setFile]     = useState<string | null>(null);
   const [fromDate, setFromDate] = useState("");
   const [toDate,   setToDate]   = useState("");
+  const rangeError = checkDateRange(fromDate, toDate);
 
   async function runExport() {
+    if (rangeError) return toast.error(validationText(t, rangeError));
     setLoading(true);
     try {
       const result = await api.exportReport(fromDate || undefined, toDate || undefined);
       setFile(result.file);
       toast.success(result ? t("admin.export.downloaded") : t("admin.export.created"));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t("admin.export.failed"));
+      toast.error(errorText(t, error, "admin.export.failed"));
     } finally { setLoading(false); }
   }
 
@@ -797,7 +992,14 @@ function ExcelExportCard() {
         </div>
         <div>
           <Label>{t("common.toDate")}</Label>
-          <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+          <Input
+            type="date"
+            value={toDate}
+            onChange={(e) => setToDate(e.target.value)}
+            aria-invalid={!!rangeError}
+            className={errorInputClass(!!rangeError)}
+          />
+          <FieldError message={validationText(t, rangeError)} />
         </div>
       </div>
 
@@ -830,6 +1032,8 @@ function EmailStatementsCard({ companies }: { companies: Company[] }) {
   const { t } = useI18n();
   const [fromDate, setFromDate] = useState(firstOfMonth);
   const [toDate, setToDate] = useState(today);
+  const rangeError = checkDateRange(fromDate, toDate);
+  const [testError, setTestError] = useState<ErrorCode | null>(null);
   const [companyId, setCompanyId] = useState("");
   const [testRecipient, setTestRecipient] = useState("");
   const [sending, setSending] = useState(false);
@@ -839,7 +1043,11 @@ function EmailStatementsCard({ companies }: { companies: Company[] }) {
     value.toLocaleString("de-DE", { style: "currency", currency: "EUR" });
 
   async function send() {
+    if (rangeError) return toast.error(validationText(t, rangeError));
     const isTest = testRecipient.trim() !== "";
+    const testProblem = isTest ? checkEmailFormat(testRecipient) : null;
+    setTestError(testProblem);
+    if (testProblem) return;
     const question = isTest
       ? t("admin.mail.confirmTest", { email: testRecipient.trim() })
       : t("admin.mail.confirmReal");
@@ -858,7 +1066,7 @@ function EmailStatementsCard({ companies }: { companies: Company[] }) {
       if (res.failed.length > 0) toast.error(t("admin.mail.someFailed", { count: res.failed.length }));
       else toast.success(t("admin.mail.done", { count: res.sent.length }));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t("admin.mail.failed"));
+      toast.error(errorText(t, error, "admin.mail.failed"));
     } finally {
       setSending(false);
     }
@@ -880,7 +1088,14 @@ function EmailStatementsCard({ companies }: { companies: Company[] }) {
         </div>
         <div>
           <Label>{t("common.toDate")}</Label>
-          <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+          <Input
+            type="date"
+            value={toDate}
+            onChange={(e) => setToDate(e.target.value)}
+            aria-invalid={!!rangeError}
+            className={errorInputClass(!!rangeError)}
+          />
+          <FieldError message={validationText(t, rangeError)} />
         </div>
       </div>
 
@@ -901,9 +1116,12 @@ function EmailStatementsCard({ companies }: { companies: Company[] }) {
         <Input
           type="email"
           value={testRecipient}
-          onChange={(e) => setTestRecipient(e.target.value)}
+          onChange={(e) => { setTestRecipient(e.target.value); setTestError(null); }}
           placeholder={t("admin.mail.testPlaceholder")}
+          aria-invalid={!!testError}
+          className={errorInputClass(!!testError)}
         />
+        <FieldError message={validationText(t, testError)} />
         <p className="text-xs text-muted-foreground mt-1">{t("admin.mail.testHint")}</p>
       </div>
 

@@ -6,6 +6,7 @@ create table if not exists companies (
   id         bigint generated always as identity primary key,
   name       text not null,
   logo_url   text default '',
+  email_domains text not null default '',  -- allowed e-mail domains besides gmail.com, e.g. 'th-deg.de, stud.th-deg.de'
   created_at timestamptz not null default now()
 );
 

@@ -2,28 +2,27 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { ArrowLeft, UserPlus, Search } from "lucide-react";
-import { z } from "zod";
 import { api, saveSelectedUser } from "@/lib/api";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { useI18n, type Translate } from "@/lib/i18n";
+import { errorText, useI18n } from "@/lib/i18n";
+import { EmployeeFormFields } from "@/components/EmployeeFormFields";
+import {
+  backendFieldError,
+  hasErrors,
+  validateEmployee,
+  type EmployeeField,
+  type FieldErrors,
+} from "@/lib/validation";
+
+const EMPLOYEE_FIELDS = ["first_name", "last_name", "email", "pin"] as const;
 
 export const Route = createFileRoute("/employees/$companyId")({
   component: EmployeesPage,
 });
-
-function makeEmployeeSchema(t: Translate) {
-  return z.object({
-    first_name: z.string().trim().min(1, t("emp.required")).max(60),
-    last_name: z.string().trim().min(1, t("emp.required")).max(60),
-    email: z.string().trim().email(t("emp.invalidEmail")).max(255),
-    pin: z.string().trim().min(1, t("emp.pinRequired")).max(40),
-  });
-}
 
 function EmployeesPage() {
   const { t } = useI18n();
@@ -33,6 +32,8 @@ function EmployeesPage() {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ first_name: "", last_name: "", email: "", pin: "" });
+  const [errors, setErrors] = useState<FieldErrors<EmployeeField>>({});
+  const [triedSubmit, setTriedSubmit] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const { data: company } = useQuery({
@@ -83,20 +84,36 @@ function EmployeesPage() {
     return prefix.slice(0, 6);
   }, [employees, term]);
 
+  function updateField(field: EmployeeField, value: string) {
+    const next = { ...form, [field]: value };
+    setForm(next);
+    // After the first "Save", the messages update while the user types.
+    if (triedSubmit) setErrors(validateEmployee(next, company?.email_domains));
+  }
+
+  function openDialog() {
+    setForm({ first_name: "", last_name: "", email: "", pin: "" });
+    setErrors({});
+    setTriedSubmit(false);
+    setOpen(true);
+  }
+
   async function handleCreate() {
-    const parsed = makeEmployeeSchema(t).safeParse(form);
-    if (!parsed.success) {
-      toast.error(parsed.error.issues[0].message);
+    setTriedSubmit(true);
+    const found = validateEmployee(form, company?.email_domains);
+    setErrors(found);
+    if (hasErrors(found)) {
+      toast.error(t("val.fixErrors"));
       return;
     }
     setSubmitting(true);
     try {
       const created = await api.createUser({
         company_id: Number(companyId),
-        first_name: parsed.data.first_name,
-        last_name: parsed.data.last_name,
-        email: parsed.data.email,
-        pin: parsed.data.pin,
+        first_name: form.first_name.trim(),
+        last_name: form.last_name.trim(),
+        email: form.email.trim().toLowerCase(),
+        pin: form.pin.trim(),
       });
       const data = created[0];
       if (!data) throw new Error(t("emp.notCreated"));
@@ -106,7 +123,9 @@ function EmployeesPage() {
       await refetch();
       navigate({ to: "/order/$employeeId", params: { employeeId: String(data.id) } });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t("emp.createFailed"));
+      const fieldError = backendFieldError(error, EMPLOYEE_FIELDS);
+      if (fieldError) setErrors(fieldError);
+      toast.error(errorText(t, error, "emp.createFailed"));
     } finally {
       setSubmitting(false);
     }
@@ -155,7 +174,7 @@ function EmployeesPage() {
 
         <div className="mt-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
           <button
-            onClick={() => setOpen(true)}
+            onClick={openDialog}
             className="glass glass-focus group rounded-2xl transition-all p-5 text-left flex flex-col focus:outline-none border-2 border-dashed border-accent/50 hover:border-accent"
             aria-label={t("emp.addNew")}
           >
@@ -198,30 +217,13 @@ function EmployeesPage() {
           <DialogHeader>
             <DialogTitle>{t("emp.dialogTitle")}</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>{t("common.firstName")}</Label>
-                <Input value={form.first_name} onChange={(e) => setForm({ ...form, first_name: e.target.value })} />
-              </div>
-              <div>
-                <Label>{t("common.lastName")}</Label>
-                <Input value={form.last_name} onChange={(e) => setForm({ ...form, last_name: e.target.value })} />
-              </div>
-            </div>
-            <div>
-              <Label>{t("common.company")}</Label>
-              <Input value={company?.name ?? ""} disabled />
-            </div>
-            <div>
-              <Label>{t("common.email")}</Label>
-              <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-            </div>
-            <div>
-              <Label>{t("common.pin")}</Label>
-              <Input value={form.pin} onChange={(e) => setForm({ ...form, pin: e.target.value })} placeholder={t("emp.pinPlaceholder")} />
-            </div>
-          </div>
+          <EmployeeFormFields
+            form={form}
+            errors={errors}
+            onChange={updateField}
+            companyName={company?.name ?? ""}
+            companyDomains={company?.email_domains}
+          />
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>{t("common.cancel")}</Button>
             <Button onClick={handleCreate} disabled={submitting}>{t("common.save")}</Button>

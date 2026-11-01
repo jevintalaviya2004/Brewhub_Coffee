@@ -4,7 +4,43 @@ export type Company = {
   id: number;
   name: string;
   logo_url?: string | null;
+  email_domains?: string | null;
 };
+
+/** Error from the backend. `field` and `code` are set for validation errors. */
+export class ApiError extends Error {
+  status: number;
+  field?: string;
+  code?: string;
+
+  constructor(message: string, status: number, field?: string, code?: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.field = field;
+    this.code = code;
+  }
+}
+
+async function toApiError(response: Response): Promise<ApiError> {
+  let message = `Request failed with status ${response.status}`;
+  try {
+    const body = await response.json();
+    const detail = body?.detail;
+    if (detail && typeof detail === "object" && !Array.isArray(detail) && "code" in detail) {
+      return new ApiError(String(detail.message ?? detail.code), response.status, detail.field, detail.code);
+    }
+    if (Array.isArray(detail) && detail[0]?.msg) {
+      // FastAPI type errors (422): [{ loc: [..., "field"], msg }]
+      const loc = detail[0].loc;
+      return new ApiError(String(detail[0].msg), response.status, Array.isArray(loc) ? String(loc[loc.length - 1]) : undefined);
+    }
+    message = (typeof detail === "string" && detail) || body?.message || message;
+  } catch {
+    // keep fallback message
+  }
+  return new ApiError(message, response.status);
+}
 
 export type User = {
   id: number;
@@ -85,14 +121,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   if (!response.ok) {
     handleUnauthorized(response.status, !!token);
-    let message = `Request failed with status ${response.status}`;
-    try {
-      const errorBody = await response.json();
-      message = errorBody.detail || errorBody.message || message;
-    } catch {
-      // keep fallback message
-    }
-    throw new Error(message);
+    throw await toApiError(response);
   }
 
   if (response.status === 204) return undefined as T;
@@ -115,17 +144,25 @@ export const api = {
     return request<Company[]>("/api/companies/");
   },
 
-  createCompany(company: Pick<Company, "name" | "logo_url">) {
+  createCompany(company: Pick<Company, "name" | "logo_url" | "email_domains">) {
     return request<Company[]>("/api/companies/", {
       method: "POST",
-      body: JSON.stringify({ name: company.name, logo_url: company.logo_url ?? "" }),
+      body: JSON.stringify({
+        name: company.name,
+        logo_url: company.logo_url ?? "",
+        email_domains: company.email_domains ?? "",
+      }),
     });
   },
 
-  updateCompany(companyId: number | string, company: Pick<Company, "name" | "logo_url">) {
+  updateCompany(companyId: number | string, company: Pick<Company, "name" | "logo_url" | "email_domains">) {
     return request<Company[]>(`/api/companies/${companyId}`, {
       method: "PUT",
-      body: JSON.stringify({ name: company.name, logo_url: company.logo_url ?? "" }),
+      body: JSON.stringify({
+        name: company.name,
+        logo_url: company.logo_url ?? "",
+        email_domains: company.email_domains ?? "",
+      }),
     });
   },
 
@@ -243,12 +280,7 @@ export const api = {
     });
     if (!response.ok) {
       handleUnauthorized(response.status, !!token);
-      let message = `Request failed with status ${response.status}`;
-      try {
-        const errorBody = await response.json();
-        message = errorBody.detail || errorBody.message || message;
-      } catch { /* keep fallback */ }
-      throw new Error(message);
+      throw await toApiError(response);
     }
     const blob = await response.blob();
     const url  = URL.createObjectURL(blob);

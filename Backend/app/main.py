@@ -1,7 +1,9 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import ALLOWED_ORIGINS
+from app.validation import ValidationProblem
 
 from app.routes.company_routes import router as company_router
 from app.routes.user_routes import router as user_router
@@ -20,6 +22,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"]
 )
+
+@app.exception_handler(ValidationProblem)
+def validation_problem_handler(request: Request, problem: ValidationProblem):
+    # The frontend shows a translated message for {field, code}.
+    return JSONResponse(
+        status_code=problem.status,
+        content={"detail": {"field": problem.field, "code": problem.code, "message": problem.code}},
+    )
+
 
 @app.get("/")
 def home():

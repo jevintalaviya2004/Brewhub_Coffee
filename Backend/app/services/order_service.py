@@ -1,18 +1,27 @@
 from datetime import datetime, timedelta
 from app.database import supabase
+from app.validation import ValidationProblem, clean_quantity
 
 
 class OrderService:
 
     @staticmethod
     def create_order(order_data):
+        if not order_data.items:
+            raise ValidationProblem("items", "order_empty")
+        if not supabase.table("users").select("id").eq("id", order_data.user_id).execute().data:
+            raise ValidationProblem("user_id", "user_not_found", status=404)
+
         total = 0
         order_items = []
 
         for item in order_data.items:
+            clean_quantity(item.quantity)
             product_response = (
                 supabase.table("products").select("*").eq("id", item.product_id).execute()
             )
+            if not product_response.data:
+                raise ValidationProblem("product_id", "product_not_found", status=404)
             product = product_response.data[0]
             item_total = product["price"] * item.quantity
             total += item_total
@@ -22,6 +31,7 @@ class OrderService:
                 "price":      product["price"],
             })
 
+        total = round(total, 2)
         order_response = (
             supabase.table("orders")
             .insert({"user_id": order_data.user_id, "total": total})
@@ -118,6 +128,7 @@ class OrderService:
 
     @staticmethod
     def update_order_item(item_id: int, quantity: int):
+        clean_quantity(quantity)
         updated = (
             supabase.table("order_items")
             .update({"quantity": quantity})

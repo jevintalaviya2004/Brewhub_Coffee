@@ -191,6 +191,45 @@ const en = {
   "admin.mail.summary": "{sent} of {employees} statements sent · total {total}",
   "admin.mail.nothing": "No orders in this period.",
 
+  // Validation messages
+  "val.required": "This field is required.",
+  "val.name_too_short": "At least 2 characters.",
+  "val.name_too_long": "Max. 50 characters.",
+  "val.name_has_digits": "Names cannot contain numbers.",
+  "val.name_invalid_chars": "Only letters, spaces, hyphen (-) and apostrophe ('). Start with a letter.",
+  "val.email_invalid": "Please enter a valid e-mail address, e.g. name@gmail.com.",
+  "val.email_domain_not_allowed": "Only @gmail.com or an e-mail address of your company is allowed.",
+  "val.gmail_invalid_chars": "Gmail addresses may only contain letters, numbers and dots.",
+  "val.gmail_length": "The part before @gmail.com must have 6 to 30 characters.",
+  "val.email_taken": "This e-mail address is already registered.",
+  "val.pin_invalid": "The PIN must have 4 to 6 digits (numbers only).",
+  "val.pin_taken": "This PIN is already used in this company. Please choose another one.",
+  "val.company_name_too_short": "At least 2 characters.",
+  "val.company_name_too_long": "Max. 60 characters.",
+  "val.company_name_taken": "A company with this name already exists.",
+  "val.logo_invalid": "Must start with https:// or /company-logos/.",
+  "val.domain_invalid": "Enter domains like th-deg.de, separated by commas (without https:// or @).",
+  "val.product_name_too_short": "At least 2 characters.",
+  "val.product_name_too_long": "Max. 40 characters.",
+  "val.product_name_taken": "A drink with this name already exists.",
+  "val.price_invalid": "Please enter a number, e.g. 2.50.",
+  "val.price_decimals": "Max. 2 decimal places.",
+  "val.price_range": "The price must be between 0.10 € and 20.00 €.",
+  "val.quantity_invalid": "Please enter a whole number.",
+  "val.quantity_range": "The quantity must be between 1 and 20.",
+  "val.date_order": "The start date must be before the end date.",
+  "val.order_empty": "Please choose at least one drink.",
+  "val.company_not_found": "This company does not exist anymore.",
+  "val.user_not_found": "This employee does not exist anymore.",
+  "val.product_not_found": "A drink in this order does not exist anymore.",
+  "val.fixErrors": "Please correct the marked fields.",
+  "val.hint.emailAllowed": "Allowed: {domains}",
+  "val.hint.pin": "4 to 6 digits, e.g. 1234",
+  "admin.company.domains": "E-mail domains",
+  "admin.company.domainsPlaceholder": "e.g. th-deg.de, stud.th-deg.de",
+  "admin.company.domainsHint": "Employees can register with @gmail.com or with these domains.",
+  "order.maxReached": "Max. {max} per drink",
+
   // Error pages
   "error.notFoundTitle": "Page not found",
   "error.notFoundText": "The page you're looking for doesn't exist or has been moved.",
@@ -384,6 +423,45 @@ const de: Record<TranslationKey, string> = {
   "admin.mail.summary": "{sent} von {employees} Abrechnungen gesendet · gesamt {total}",
   "admin.mail.nothing": "Keine Bestellungen in diesem Zeitraum.",
 
+  // Validation messages
+  "val.required": "Dieses Feld ist erforderlich.",
+  "val.name_too_short": "Mindestens 2 Zeichen.",
+  "val.name_too_long": "Höchstens 50 Zeichen.",
+  "val.name_has_digits": "Namen dürfen keine Zahlen enthalten.",
+  "val.name_invalid_chars": "Nur Buchstaben, Leerzeichen, Bindestrich (-) und Apostroph ('). Mit einem Buchstaben beginnen.",
+  "val.email_invalid": "Bitte eine gültige E-Mail-Adresse eingeben, z. B. name@gmail.com.",
+  "val.email_domain_not_allowed": "Nur @gmail.com oder eine E-Mail-Adresse deiner Firma ist erlaubt.",
+  "val.gmail_invalid_chars": "Gmail-Adressen dürfen nur Buchstaben, Zahlen und Punkte enthalten.",
+  "val.gmail_length": "Der Teil vor @gmail.com muss 6 bis 30 Zeichen haben.",
+  "val.email_taken": "Diese E-Mail-Adresse ist bereits registriert.",
+  "val.pin_invalid": "Die PIN muss 4 bis 6 Ziffern haben (nur Zahlen).",
+  "val.pin_taken": "Diese PIN wird in dieser Firma schon verwendet. Bitte wähle eine andere.",
+  "val.company_name_too_short": "Mindestens 2 Zeichen.",
+  "val.company_name_too_long": "Höchstens 60 Zeichen.",
+  "val.company_name_taken": "Eine Firma mit diesem Namen gibt es schon.",
+  "val.logo_invalid": "Muss mit https:// oder /company-logos/ beginnen.",
+  "val.domain_invalid": "Domains wie th-deg.de eingeben, mit Komma getrennt (ohne https:// oder @).",
+  "val.product_name_too_short": "Mindestens 2 Zeichen.",
+  "val.product_name_too_long": "Höchstens 40 Zeichen.",
+  "val.product_name_taken": "Ein Getränk mit diesem Namen gibt es schon.",
+  "val.price_invalid": "Bitte eine Zahl eingeben, z. B. 2,50.",
+  "val.price_decimals": "Höchstens 2 Nachkommastellen.",
+  "val.price_range": "Der Preis muss zwischen 0,10 € und 20,00 € liegen.",
+  "val.quantity_invalid": "Bitte eine ganze Zahl eingeben.",
+  "val.quantity_range": "Die Anzahl muss zwischen 1 und 20 liegen.",
+  "val.date_order": "Das Startdatum muss vor dem Enddatum liegen.",
+  "val.order_empty": "Bitte wähle mindestens ein Getränk.",
+  "val.company_not_found": "Diese Firma gibt es nicht mehr.",
+  "val.user_not_found": "Diesen Mitarbeiter gibt es nicht mehr.",
+  "val.product_not_found": "Ein Getränk in dieser Bestellung gibt es nicht mehr.",
+  "val.fixErrors": "Bitte korrigiere die markierten Felder.",
+  "val.hint.emailAllowed": "Erlaubt: {domains}",
+  "val.hint.pin": "4 bis 6 Ziffern, z. B. 1234",
+  "admin.company.domains": "E-Mail-Domains",
+  "admin.company.domainsPlaceholder": "z. B. th-deg.de, stud.th-deg.de",
+  "admin.company.domainsHint": "Mitarbeiter können sich mit @gmail.com oder mit diesen Domains registrieren.",
+  "order.maxReached": "Max. {max} pro Getränk",
+
   // Error pages
   "error.notFoundTitle": "Seite nicht gefunden",
   "error.notFoundText": "Die gesuchte Seite gibt es nicht oder sie wurde verschoben.",
@@ -394,6 +472,24 @@ const de: Record<TranslationKey, string> = {
 };
 
 const dictionaries: Record<Lang, Record<TranslationKey, string>> = { en, de };
+
+export function isTranslationKey(key: string): key is TranslationKey {
+  return key in en;
+}
+
+/** Message for a validation code (from validation.ts or from the backend). */
+export function validationText(t: Translate, code: string | null | undefined): string {
+  if (!code) return "";
+  const key = `val.${code}`;
+  return isTranslationKey(key) ? t(key) : code;
+}
+
+/** Message for a caught error: translated backend code, or the error text, or a fallback. */
+export function errorText(t: Translate, error: unknown, fallback: TranslationKey): string {
+  const code = (error as { code?: string } | null)?.code;
+  if (code && isTranslationKey(`val.${code}`)) return validationText(t, code);
+  return error instanceof Error && error.message ? error.message : t(fallback);
+}
 
 const STORAGE_KEY = "brewhub.lang";
 const DEFAULT_LANG: Lang = "de";

@@ -6,7 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { LanguageSwitch, useI18n } from "@/lib/i18n";
+import { LanguageSwitch, useI18n, validationText } from "@/lib/i18n";
+import { FieldError, errorInputClass } from "@/components/FieldError";
+import { checkEmailFormat, type ErrorCode } from "@/lib/validation";
 
 export const Route = createFileRoute("/admin/login")({
   component: AdminLogin,
@@ -18,12 +20,15 @@ function AdminLogin() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState<{ email?: ErrorCode | null; password?: ErrorCode | null }>({});
 
   async function signIn() {
-    if (!email || !password) {
-      toast.error(t("login.required"));
-      return;
-    }
+    const found = {
+      email: checkEmailFormat(email),
+      password: password ? null : ("required" as ErrorCode),
+    };
+    setErrors(found);
+    if (found.email || found.password) return;
 
     setLoading(true);
     try {
@@ -72,7 +77,10 @@ function AdminLogin() {
                   onChange={(e) => setEmail(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && signIn()}
                   placeholder="admin@gmail.com"
+                  aria-invalid={!!errors.email}
+                  className={errorInputClass(!!errors.email)}
               />
+              <FieldError message={validationText(t, errors.email)} />
             </div>
 
             <div>
@@ -82,8 +90,11 @@ function AdminLogin() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && signIn()}
-                  placeholder="admin123"
+                  placeholder="••••••••"
+                  aria-invalid={!!errors.password}
+                  className={errorInputClass(!!errors.password)}
               />
+              <FieldError message={validationText(t, errors.password)} />
             </div>
 
             <Button className="w-full" onClick={signIn} disabled={loading}>
@@ -93,4 +104,4 @@ function AdminLogin() {
         </div>
       </div>
   );
-}
+}
